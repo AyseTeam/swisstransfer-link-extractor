@@ -40,14 +40,28 @@
     // ==========================================
     function autoRedirectIfUploadComplete() {
         // Do not run if we are already on a download page
-        if (window.location.pathname.startsWith('/d/')) return;
+        if (window.location.pathname.startsWith('/d/') || window.location.pathname.startsWith('/dl/')) return;
 
         const checkInterval = setInterval(() => {
+            // Check for the new layout (p containing the link)
+            const pElements = document.querySelectorAll('p');
+            for (const p of pElements) {
+                const text = p.textContent.trim();
+                if (text.includes('swisstransfer.com/dl/') || text.includes('swisstransfer.com/d/')) {
+                    clearInterval(checkInterval);
+                    console.log(t.uploadDoneLog);
+                    window.location.href = text;
+                    return;
+                }
+            }
+
+            // Check for the old layout (input)
             const linkInput = document.querySelector('input.card__linkInput');
-            if (linkInput && linkInput.value && linkInput.value.includes('swisstransfer.com/d/')) {
+            if (linkInput && linkInput.value && (linkInput.value.includes('swisstransfer.com/d/') || linkInput.value.includes('swisstransfer.com/dl/'))) {
                 clearInterval(checkInterval);
                 console.log(t.uploadDoneLog);
                 window.location.href = linkInput.value;
+                return;
             }
         }, 500);
     }
@@ -101,13 +115,6 @@
     function extractLinksAndInjectGUI(payload) {
         const jsonStr = JSON.stringify(payload);
         
-        // Find the download host (fallback if not found)
-        let host = "dl-xxx.swisstransfer.com"; 
-        const hostMatches = jsonStr.match(/(dl-[a-zA-Z0-9-]+\.swisstransfer\.com)/g);
-        if (hostMatches) {
-            host = hostMatches[0];
-        }
-
         // Get the link UUID from the URL or the response payload
         let linkUUID = window.location.pathname.split('/').pop();
         const linkMatch = jsonStr.match(/"linkUUID":"([a-f0-9\-]{36})"/);
@@ -121,26 +128,29 @@
             if (!obj || typeof obj !== 'object') return;
             if (Array.isArray(obj.files) && obj.files.length > 0) {
                 extractedFiles = obj.files;
+            } else if (Array.isArray(obj) && obj.length > 0 && obj[0].fileName) {
+                 // In case files array is returned directly
+                 extractedFiles = obj;
             }
             Object.values(obj).forEach(searchForFiles);
         }
         searchForFiles(payload);
 
         if (extractedFiles.length > 0) {
-            injectFloatingGUI(host, linkUUID, extractedFiles);
+            injectFloatingGUI(linkUUID, extractedFiles);
         }
     }
 
     // ==========================================
     // 3. MODERN FLOATING GUI
     // ==========================================
-    function injectFloatingGUI(host, linkUUID, files) {
+    function injectFloatingGUI(linkUUID, files) {
         // Prevent injecting multiple times
         if (document.getElementById('st-modern-helper')) return;
 
         // Wait for body to be available
         if (!document.body) {
-            setTimeout(() => injectFloatingGUI(host, linkUUID, files), 100);
+            setTimeout(() => injectFloatingGUI(linkUUID, files), 100);
             return;
         }
 
@@ -151,8 +161,8 @@
         // Generate HTML for each file
         const filesHTML = files.map((file, index) => {
             const fileId = file.UUID || file.uuid || file.fileUUID || file.id || file.fileId;
-            const fileLink = `https://${host}/api/download/${linkUUID}/${fileId}`;
-            const safeName = file.fileName || file.name || `${t.defaultFileName} ${index + 1}`;
+            const apiLink = `https://www.swisstransfer.com/api/1/links/${linkUUID}/files/${fileId}`;
+            const safeName = file.fileName || file.name || file.originalName || file.path || `${t.defaultFileName} ${index + 1}`;
             
             return `
                 <div class="st-modern-row">
@@ -161,9 +171,9 @@
                         <span>${safeName}</span>
                     </div>
                     <div class="st-modern-actions">
-                        <input type="text" readonly value="${fileLink}" class="st-modern-input" />
-                        <button class="st-modern-btn st-btn-copy" data-link="${fileLink}">${t.btnCopy}</button>
-                        <a href="${fileLink}" class="st-modern-btn st-btn-download" download>${t.btnDirect}</a>
+                        <input type="text" readonly value="${apiLink}" class="st-modern-input st-api-link" data-api="${apiLink}" />
+                        <button class="st-modern-btn st-btn-copy" data-api="${apiLink}">${t.btnCopy}</button>
+                        <button class="st-modern-btn st-btn-download" data-api="${apiLink}">${t.btnDirect}</button>
                     </div>
                 </div>
             `;
@@ -191,23 +201,91 @@
 
         // Copy link logic
         container.querySelectorAll('.st-btn-copy').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const link = e.target.getAttribute('data-link');
+            btn.addEventListener('click', async (e) => {
+                const apiLink = e.target.getAttribute('data-api');
                 const input = e.target.previousElementSibling;
+                const originalText = e.target.textContent;
+                e.target.textContent = '...';
                 
-                navigator.clipboard.writeText(link).catch(() => {
-                    // Fallback if clipboard API fails
-                    input.select();
-                    document.execCommand('copy');
-                }).then(() => {
-                    e.target.textContent = t.btnCopied;
-                    e.target.classList.add('success');
-                    setTimeout(() => {
-                        e.target.textContent = t.btnCopy;
-                        e.target.classList.remove('success');
-                    }, 2000);
-                });
+                try {
+                    const res = await fetch(apiLink);
+                    const json = await res.json();
+                    if (json && json.data && json.data.url) {
+                        const directUrl = json.data.url;
+                        input.value = directUrl; // Update input visually
+                        
+                        await navigator.clipboard.writeText(directUrl).catch(() => {
+                            // Fallback if clipboard API fails
+                            input.select();
+                            document.execCommand('copy');
+                        });
+                        
+                        e.target.textContent = t.btnCopied;
+                        e.target.classList.add('success');
+                        setTimeout(() => {
+                            e.target.textContent = t.btnCopy;
+                            e.target.classList.remove('success');
+                        }, 2000);
+                        return;
+                    }
+                } catch (err) {
+                    console.error('Error fetching direct link', err);
+                }
+                
+                // Fallback / Error state
+                e.target.textContent = 'Error';
+                setTimeout(() => e.target.textContent = originalText, 2000);
             });
         });
+
+        // Download logic
+        container.querySelectorAll('.st-btn-download').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const apiLink = e.target.getAttribute('data-api');
+                const originalText = e.target.textContent;
+                e.target.textContent = '...';
+                
+                try {
+                    const res = await fetch(apiLink);
+                    const json = await res.json();
+                    if (json && json.data && json.data.url) {
+                        const a = document.createElement('a');
+                        a.href = json.data.url;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    } else {
+                        throw new Error("No URL in response");
+                    }
+                } catch (err) {
+                    console.error('Error fetching download link', err);
+                    e.target.textContent = 'Error';
+                }
+                
+                setTimeout(() => e.target.textContent = originalText, 2000);
+            });
+        });
+    }
+
+    // ==========================================
+    // 4. SSR DATA EXTRACTION (New layout)
+    // ==========================================
+    function extractFromSSR() {
+        const scriptTag = document.querySelector('script[data-page="app"][type="application/json"]');
+        if (scriptTag) {
+            try {
+                const payload = JSON.parse(scriptTag.textContent);
+                extractLinksAndInjectGUI(payload);
+            } catch (err) {
+                console.error("Failed to parse SSR payload", err);
+            }
+        }
+    }
+    
+    // Run SSR extraction immediately and wait for DOMContentLoaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', extractFromSSR);
+    } else {
+        extractFromSSR();
     }
 })();
