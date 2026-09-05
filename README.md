@@ -19,8 +19,8 @@ https://github.com/user-attachments/assets/17f0adfa-7288-4078-be7c-5520ba094a98
 ## 🛠️ How it works
 
 1. **Upload:** When you upload files on SwissTransfer, the extension monitors the process and immediately redirects you to the download link once completed.
-2. **Download Page:** By intercepting `XMLHttpRequest` and `Fetch` API calls, the extension captures the underlying API responses containing the direct file links.
-3. **Extraction:** It dynamically creates a modern, floating interface on the page where you can copy the links or download the files directly.
+2. **Download Page:** By intercepting `XMLHttpRequest`/`Fetch` API calls and parsing the Server-Side Rendered (SSR) state injected in the page, the extension captures the underlying files information.
+3. **Extraction:** It dynamically creates a modern, floating interface on the page. When you click "Direct" or "Copy", it queries the SwissTransfer API on-demand to retrieve the temporary signed Amazon S3 download link and processes it.
 
 ## 📦 Installation (Developer Mode)
 
@@ -45,8 +45,8 @@ https://github.com/user-attachments/assets/17f0adfa-7288-4078-be7c-5520ba094a98
 ## 🛠️ Comment ça marche
 
 1. **Upload :** Lors de l'envoi de fichiers, l'extension surveille le processus et vous redirige immédiatement vers le lien de téléchargement une fois terminé.
-2. **Page de téléchargement :** En interceptant les appels API `XMLHttpRequest` et `Fetch`, l'extension capture les réponses contenant les liens directs.
-3. **Extraction :** Elle crée dynamiquement une interface moderne sur la page pour copier les liens ou télécharger les fichiers directement.
+2. **Page de téléchargement :** En interceptant les appels API (`XMLHttpRequest` et `Fetch`) et en analysant le rendu côté serveur (SSR) injecté dans la page, l'extension capture les informations des fichiers.
+3. **Extraction :** Elle crée dynamiquement une interface moderne sur la page. Lorsque vous cliquez sur "Direct" ou "Copier", elle interroge l'API de SwissTransfer à la volée pour récupérer le lien de téléchargement S3 temporaire et le traite.
 
 ## 📦 Installation (Mode Développeur)
 
